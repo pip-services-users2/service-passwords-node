@@ -3,6 +3,15 @@ FROM node:14-alpine
 # Install git and ssh
 RUN apk update && apk add git && apk add openssh
 
+# Install python
+RUN apk add --update \
+    python3 \
+    python3-dev \
+    py-pip \
+    build-base \
+  && pip install virtualenv \
+  && rm -rf /var/cache/apk/*
+  
 # Install git and ssh
 RUN apk update && apk add git && apk add openssh
 
