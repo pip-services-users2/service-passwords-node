@@ -29,7 +29,7 @@ WORKDIR /app
 # Copy project file
 COPY package.json .
 
-RUN npm i -g typescript@3.7.2
+RUN npm install typescript -g
 
 # Install ALL node_modules, including 'devDependencies'
 RUN npm install
