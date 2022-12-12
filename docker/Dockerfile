@@ -1,17 +1,46 @@
-# Start with the Node.js 8 image
-FROM node:14
+FROM node:14-alpine
 
-# Set a working directory
+# Install git and ssh
+RUN apk update && apk add git && apk add openssh
+
+# Install python
+RUN apk add --update \
+    python3 \
+    python3-dev \
+    py-pip \
+    build-base \
+  && pip install virtualenv \
+  && rm -rf /var/cache/apk/*
+  
+# Install git and ssh
+RUN apk update && apk add git && apk add openssh
+
+# Copy local ssh keys
+COPY docker/id_rsa /root/.ssh/
+
+# Setup ssh access to github repositories
+RUN chmod 600 /root/.ssh/id_rsa* \
+    && ssh-keyscan github.com >> ~/.ssh/known_hosts \
+    && ssh-keyscan gitlab.com >> ~/.ssh/known_hosts 
+
+# Set working directory
 WORKDIR /app
 
-# Copy the project file
-COPY package*.json ./
+# Copy project file
+COPY package.json .
 
 # Install ALL node_modules, including 'devDependencies'
 RUN npm install
 
-# Copy the entire project
+# Copy entire project
 COPY . .
 
-# Specify the command for running the service
-CMD node bin/main.js
+# set default environment variables
+ENV MONGO_SERVICE_URI ""
+ENV MONGO_SERVICE_HOST mongo
+ENV MONGO_SERVICE_PORT 27017
+ENV MONGO_DB app
+
+EXPOSE 8080
+
+ENTRYPOINT [ "node", "./bin/main.js" ]

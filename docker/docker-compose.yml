@@ -6,7 +6,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    image: ${IMAGE:-pipdevs/app}
+    image: ${IMAGE:-pipservices/app}
     links:
       - mongo
     environment:

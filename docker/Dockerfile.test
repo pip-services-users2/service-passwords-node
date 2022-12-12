@@ -3,6 +3,9 @@ FROM node:14-alpine
 # Install git and ssh
 RUN apk update && apk add git && apk add openssh
 
+# Install git and ssh
+RUN apk update && apk add git && apk add openssh
+
 # Copy local ssh keys
 COPY docker/id_rsa /root/.ssh/
 
@@ -10,9 +13,6 @@ COPY docker/id_rsa /root/.ssh/
 RUN chmod 600 /root/.ssh/id_rsa* \
     && ssh-keyscan github.com >> ~/.ssh/known_hosts \
     && ssh-keyscan gitlab.com >> ~/.ssh/known_hosts 
-
-# Install development tools
-RUN npm install typescript -g
 
 # Set working directory
 WORKDIR /app
@@ -27,6 +27,3 @@ RUN npm install
 COPY . .
 
 CMD [ "npm", "test" ]
-
-# Remove npmrc file because env variable NPM_TOKEN is set for travis projects
-RUN rm -f ./.npmrc
