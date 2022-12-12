@@ -65,6 +65,12 @@ export class PasswordsController implements IConfigurable, IReferenceable, IComm
     private _magicCode: string = null;
     private _code_length: number = 9; // Generated code length
 
+    private _maxPasswordLen: number = 20;
+    private _minPasswordLen: number = 5;
+
+    private _oldPasswordsCheck: boolean = false;
+    private _oldPasswordsCount: number = 6;
+
     public configure(config: ConfigParams): void {
         config = config.setDefaults(PasswordsController._defaultConfig)
         this._dependencyResolver.configure(config);
@@ -79,6 +85,12 @@ export class PasswordsController implements IConfigurable, IReferenceable, IComm
         this._code_length = config.getAsIntegerWithDefault('options.code_length', this._code_length);
         this._code_length = this._code_length <= 9 ? this._code_length : 9;
         this._code_length = this._code_length >= 3 ? this._code_length : 3;
+
+        this._maxPasswordLen = config.getAsIntegerWithDefault('options.max_password_len', this._maxPasswordLen);
+        this._minPasswordLen = config.getAsIntegerWithDefault('options.min_password_len', this._minPasswordLen);
+
+        this._oldPasswordsCheck = config.getAsBooleanWithDefault('options.old_passwords_check', this._oldPasswordsCheck);
+        this._oldPasswordsCount = config.getAsIntegerWithDefault('options.old_passwords_count', this._oldPasswordsCount);
     }
 
     public setReferences(references: IReferences): void {
@@ -110,8 +122,20 @@ export class PasswordsController implements IConfigurable, IReferenceable, IComm
         return shaSum.digest('hex');
     }
 
-    private verifyPassword(correlationId: string, password: string): void {
 
+    private addOldPassword(passwordObject: UserPasswordV1, oldPassword: string): UserPasswordV1 {
+        if (passwordObject.custom_dat == null)
+            passwordObject.custom_dat = { old_passwords: [] };
+        if (passwordObject.custom_dat.old_passwords.length >= this._oldPasswordsCount)
+            passwordObject.custom_dat.old_passwords = passwordObject.custom_dat.old_passwords.slice(1)
+
+        passwordObject.custom_dat.old_passwords.push(oldPassword);
+
+        return passwordObject;
+    }
+
+
+    private async verifyPassword(correlationId: string, password: string, userId?: string): Promise<void> {
         if (!password) {
             throw new BadRequestException(
                 correlationId,
@@ -119,14 +143,50 @@ export class PasswordsController implements IConfigurable, IReferenceable, IComm
                 'Missing user password'
             );
         }
-
-        if (password.length < 6 || password.length > 20) {
+        
+        if (password.length < this._minPasswordLen || password.length > this._maxPasswordLen) {
             throw new BadRequestException(
                 correlationId,
                 'BAD_PASSWORD',
-                'User password should be 5 to 20 symbols long'
+                'User password should be ' + this._minPasswordLen +' to ' + this._maxPasswordLen + ' symbols long'
             );
         }
+
+        if (userId != null && userId.length > 0 && this._oldPasswordsCheck) {
+            let oldPasswordErr: BadRequestException;
+            let userPassword: UserPasswordV1;
+
+            try {
+                userPassword = await this.readUserPassword(correlationId, userId);
+            } catch (err) {
+                if (err instanceof NotFoundException) return;
+                else throw err;
+            }
+
+            if (userPassword != null) {
+                if (userPassword.custom_dat == null)
+                    userPassword.custom_dat = { old_passwords: [] };
+                if (userPassword.custom_dat.old_passwords == null)
+                    userPassword.custom_dat.old_passwords = [];
+
+                password = this.hashPassword(password);
+                for (let oldPass of userPassword.custom_dat.old_passwords) {
+                    if (oldPass === password) {
+                        oldPasswordErr = new BadRequestException(
+                            correlationId,
+                            'OLD_PASSWORD',
+                            'Old password used'
+                        )
+                    }
+                }
+            }
+
+            if (oldPasswordErr) throw oldPasswordErr;
+        }
+    }
+
+    public async validatePasswordForUser(correlationId: string, userId: string, password: string): Promise<void> {
+        await this.verifyPassword(correlationId, password, userId)
     }
 
     private async readUserPassword(correlationId: string, userId: string): Promise<UserPasswordV1> {
@@ -147,7 +207,7 @@ export class PasswordsController implements IConfigurable, IReferenceable, IComm
     }
 
     public async validatePassword(correlationId: string, password: string): Promise<void> {
-        this.verifyPassword(correlationId, password)
+        await this.verifyPassword(correlationId, password);
     }
 
     public async getPasswordInfo(correlationId: string, userId: string): Promise<UserPasswordInfoV1> {
@@ -165,9 +225,18 @@ export class PasswordsController implements IConfigurable, IReferenceable, IComm
     }
 
     public async setPassword(correlationId: string, userId: string, password: string): Promise<void> {
+        await this.verifyPassword(correlationId, password, userId);
+
+        let userPassword = await this._persistence.getOneById(correlationId, userId);
+        
         password = this.hashPassword(password);
 
-        let userPassword = new UserPasswordV1(userId, password);
+        if (userPassword != null) {
+            userPassword = this.addOldPassword(userPassword, userPassword.password);
+        } else {
+            userPassword = new UserPasswordV1(userId, password);
+        }
+        
         await this._persistence.create(correlationId, userPassword);
     }
 
@@ -204,6 +273,7 @@ export class PasswordsController implements IConfigurable, IReferenceable, IComm
     }
 
     public async deletePassword(correlationId: string, userId: string): Promise<void> {
+        // todo: add validate
         await this._persistence.deleteById(correlationId, userId);
     }
 
@@ -289,7 +359,7 @@ export class PasswordsController implements IConfigurable, IReferenceable, IComm
     public async changePassword(correlationId: string, userId: string, oldPassword: string, newPassword: string): Promise<void> {
         let userPassword;
 
-        this.verifyPassword(correlationId, newPassword);
+        await this.verifyPassword(correlationId, newPassword, userId);
 
         oldPassword = this.hashPassword(oldPassword);
         newPassword = this.hashPassword(newPassword);
@@ -314,6 +384,9 @@ export class PasswordsController implements IConfigurable, IReferenceable, IComm
                 'Old and new passwords are identical'
             ).withDetails('user_id', userId);
         }
+
+        // Save old password
+        userPassword = this.addOldPassword(userPassword, oldPassword);
 
         // Reset password
         userPassword.password = newPassword;
@@ -346,9 +419,9 @@ export class PasswordsController implements IConfigurable, IReferenceable, IComm
 
     public async resetPassword(correlationId: string, userId: string, code: string, password: string): Promise<void> {
 
-        let userPassword: UserPasswordV1;
+        await this.verifyPassword(correlationId, password, userId);
 
-        this.verifyPassword(correlationId, password);
+        let userPassword: UserPasswordV1;
 
         password = this.hashPassword(password);
 

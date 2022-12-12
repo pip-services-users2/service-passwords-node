@@ -20,7 +20,9 @@ suite('PasswordsController', ()=> {
     suiteSetup(() => {
         persistence = new PasswordsMemoryPersistence();
         controller = new PasswordsController();
-        controller.configure(new ConfigParams());
+        controller.configure(ConfigParams.fromTuples(
+            'options.old_passwords_check', true
+        ));
 
         let logger = new ConsoleLogger();
 
@@ -143,6 +145,56 @@ suite('PasswordsController', ()=> {
 
         assert.equal(USER_PWD.id, info.id);
         assert.isNotNull(info.change_time);
+    });
+
+    test('Validate old passwords', async () => {
+        // Sign up
+        await controller.setPassword(null, USER_PWD.id, USER_PWD.password);
+
+        // Change password
+        await controller.changePassword(null, USER_PWD.id, USER_PWD.password, 'xxx123');
+
+        // Sign in with new password
+        let authenticated = await controller.authenticate(null, USER_PWD.id, 'xxx123');
+
+        assert.isTrue(authenticated);
+
+        // Change password on old
+        try {
+            await controller.changePassword(null, USER_PWD.id, 'xxx123', USER_PWD.password);
+            assert.isNull('Must throw error')
+        } catch (err) {
+            assert.equal(err.code, 'OLD_PASSWORD');
+            assert.equal(err.status, 400);
+            assert.equal(err.category, 'BadRequest');
+        }
+
+        // Change password 8 times (by default saves last 6 passwords)
+        let oldPwd = 'xxx123';
+        let newPwd: string;
+
+        for (let i = 0; i < 8; i++) {
+            newPwd = 'xxx123_' + i.toString();
+
+            await controller.changePassword(null, USER_PWD.id, oldPwd, newPwd);
+
+            oldPwd = newPwd;
+        }
+
+        // Change password on the old password
+        try {
+            await controller.changePassword(null, USER_PWD.id, 'xxx123_7', 'xxx123_3');
+            assert.isNull('Must throw error')
+        } catch(err) {
+            assert.equal(err.code, 'OLD_PASSWORD');
+            assert.equal(err.status, 400);
+            assert.equal(err.category, 'BadRequest');
+        }
+        
+        // Sign in with the last password
+        authenticated = await controller.authenticate(null, USER_PWD.id, 'xxx123_7');
+        
+        assert.isTrue(authenticated);
     });
 
 });

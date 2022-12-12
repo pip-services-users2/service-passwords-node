@@ -34,6 +34,10 @@ class PasswordsController {
         this._lockEnabled = false;
         this._magicCode = null;
         this._code_length = 9; // Generated code length
+        this._maxPasswordLen = 20;
+        this._minPasswordLen = 5;
+        this._oldPasswordsCheck = false;
+        this._oldPasswordsCount = 6;
     }
     configure(config) {
         config = config.setDefaults(PasswordsController._defaultConfig);
@@ -48,6 +52,10 @@ class PasswordsController {
         this._code_length = config.getAsIntegerWithDefault('options.code_length', this._code_length);
         this._code_length = this._code_length <= 9 ? this._code_length : 9;
         this._code_length = this._code_length >= 3 ? this._code_length : 3;
+        this._maxPasswordLen = config.getAsIntegerWithDefault('options.max_password_len', this._maxPasswordLen);
+        this._minPasswordLen = config.getAsIntegerWithDefault('options.min_password_len', this._minPasswordLen);
+        this._oldPasswordsCheck = config.getAsBooleanWithDefault('options.old_passwords_check', this._oldPasswordsCheck);
+        this._oldPasswordsCount = config.getAsIntegerWithDefault('options.old_passwords_count', this._oldPasswordsCount);
     }
     setReferences(references) {
         this._logger.setReferences(references);
@@ -73,13 +81,55 @@ class PasswordsController {
         shaSum.update(password);
         return shaSum.digest('hex');
     }
-    verifyPassword(correlationId, password) {
-        if (!password) {
-            throw new pip_services3_commons_nodex_4.BadRequestException(correlationId, 'NO_PASSWORD', 'Missing user password');
-        }
-        if (password.length < 6 || password.length > 20) {
-            throw new pip_services3_commons_nodex_4.BadRequestException(correlationId, 'BAD_PASSWORD', 'User password should be 5 to 20 symbols long');
-        }
+    addOldPassword(passwordObject, oldPassword) {
+        if (passwordObject.custom_dat == null)
+            passwordObject.custom_dat = { old_passwords: [] };
+        if (passwordObject.custom_dat.old_passwords.length >= this._oldPasswordsCount)
+            passwordObject.custom_dat.old_passwords = passwordObject.custom_dat.old_passwords.slice(1);
+        passwordObject.custom_dat.old_passwords.push(oldPassword);
+        return passwordObject;
+    }
+    verifyPassword(correlationId, password, userId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (!password) {
+                throw new pip_services3_commons_nodex_4.BadRequestException(correlationId, 'NO_PASSWORD', 'Missing user password');
+            }
+            if (password.length < this._minPasswordLen || password.length > this._maxPasswordLen) {
+                throw new pip_services3_commons_nodex_4.BadRequestException(correlationId, 'BAD_PASSWORD', 'User password should be ' + this._minPasswordLen + ' to ' + this._maxPasswordLen + ' symbols long');
+            }
+            if (userId != null && userId.length > 0 && this._oldPasswordsCheck) {
+                let oldPasswordErr;
+                let userPassword;
+                try {
+                    userPassword = yield this.readUserPassword(correlationId, userId);
+                }
+                catch (err) {
+                    if (err instanceof pip_services3_commons_nodex_5.NotFoundException)
+                        return;
+                    else
+                        throw err;
+                }
+                if (userPassword != null) {
+                    if (userPassword.custom_dat == null)
+                        userPassword.custom_dat = { old_passwords: [] };
+                    if (userPassword.custom_dat.old_passwords == null)
+                        userPassword.custom_dat.old_passwords = [];
+                    password = this.hashPassword(password);
+                    for (let oldPass of userPassword.custom_dat.old_passwords) {
+                        if (oldPass === password) {
+                            oldPasswordErr = new pip_services3_commons_nodex_4.BadRequestException(correlationId, 'OLD_PASSWORD', 'Old password used');
+                        }
+                    }
+                }
+                if (oldPasswordErr)
+                    throw oldPasswordErr;
+            }
+        });
+    }
+    validatePasswordForUser(correlationId, userId, password) {
+        return __awaiter(this, void 0, void 0, function* () {
+            yield this.verifyPassword(correlationId, password, userId);
+        });
     }
     readUserPassword(correlationId, userId) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -92,7 +142,7 @@ class PasswordsController {
     }
     validatePassword(correlationId, password) {
         return __awaiter(this, void 0, void 0, function* () {
-            this.verifyPassword(correlationId, password);
+            yield this.verifyPassword(correlationId, password);
         });
     }
     getPasswordInfo(correlationId, userId) {
@@ -111,8 +161,15 @@ class PasswordsController {
     }
     setPassword(correlationId, userId, password) {
         return __awaiter(this, void 0, void 0, function* () {
+            yield this.verifyPassword(correlationId, password, userId);
+            let userPassword = yield this._persistence.getOneById(correlationId, userId);
             password = this.hashPassword(password);
-            let userPassword = new UserPasswordV1_1.UserPasswordV1(userId, password);
+            if (userPassword != null) {
+                userPassword = this.addOldPassword(userPassword, userPassword.password);
+            }
+            else {
+                userPassword = new UserPasswordV1_1.UserPasswordV1(userId, password);
+            }
             yield this._persistence.create(correlationId, userPassword);
         });
     }
@@ -141,6 +198,7 @@ class PasswordsController {
     }
     deletePassword(correlationId, userId) {
         return __awaiter(this, void 0, void 0, function* () {
+            // todo: add validate
             yield this._persistence.deleteById(correlationId, userId);
         });
     }
@@ -197,7 +255,7 @@ class PasswordsController {
     changePassword(correlationId, userId, oldPassword, newPassword) {
         return __awaiter(this, void 0, void 0, function* () {
             let userPassword;
-            this.verifyPassword(correlationId, newPassword);
+            yield this.verifyPassword(correlationId, newPassword, userId);
             oldPassword = this.hashPassword(oldPassword);
             newPassword = this.hashPassword(newPassword);
             // Retrieve user
@@ -210,6 +268,8 @@ class PasswordsController {
             if (oldPassword === newPassword) {
                 throw new pip_services3_commons_nodex_4.BadRequestException(correlationId, 'PASSWORD_NOT_CHANGED', 'Old and new passwords are identical').withDetails('user_id', userId);
             }
+            // Save old password
+            userPassword = this.addOldPassword(userPassword, oldPassword);
             // Reset password
             userPassword.password = newPassword;
             userPassword.pwd_rec_code = null;
@@ -239,8 +299,8 @@ class PasswordsController {
     }
     resetPassword(correlationId, userId, code, password) {
         return __awaiter(this, void 0, void 0, function* () {
+            yield this.verifyPassword(correlationId, password, userId);
             let userPassword;
-            this.verifyPassword(correlationId, password);
             password = this.hashPassword(password);
             // Retrieve user
             userPassword = yield this.readUserPassword(correlationId, userId);

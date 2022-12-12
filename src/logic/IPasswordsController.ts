@@ -4,6 +4,8 @@ export interface IPasswordsController {
     getPasswordInfo(correlationId: string, userId: string): Promise<UserPasswordInfoV1>;
     
     validatePassword(correlationId: string, password: string): Promise<void>;
+
+    validatePasswordForUser(correlationId: string, userId: string, password: string): Promise<void>;
     
     setPassword(correlationId: string, userId: string, password: string): Promise<void>;
 
@@ -22,3 +24,4 @@ export interface IPasswordsController {
     recoverPassword(correlationId: string, userId: string): Promise<void>;
 
 }
+    

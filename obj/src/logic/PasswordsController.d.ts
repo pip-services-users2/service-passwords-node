@@ -24,12 +24,18 @@ export declare class PasswordsController implements IConfigurable, IReferenceabl
     private _lockEnabled;
     private _magicCode;
     private _code_length;
+    private _maxPasswordLen;
+    private _minPasswordLen;
+    private _oldPasswordsCheck;
+    private _oldPasswordsCount;
     configure(config: ConfigParams): void;
     setReferences(references: IReferences): void;
     getCommandSet(): CommandSet;
     private generateVerificationCode;
     private hashPassword;
+    private addOldPassword;
     private verifyPassword;
+    validatePasswordForUser(correlationId: string, userId: string, password: string): Promise<void>;
     private readUserPassword;
     validatePassword(correlationId: string, password: string): Promise<void>;
     getPasswordInfo(correlationId: string, userId: string): Promise<UserPasswordInfoV1>;

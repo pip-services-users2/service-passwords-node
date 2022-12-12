@@ -2,6 +2,7 @@ import { UserPasswordInfoV1 } from '../data/version1/UserPasswordInfoV1';
 export interface IPasswordsController {
     getPasswordInfo(correlationId: string, userId: string): Promise<UserPasswordInfoV1>;
     validatePassword(correlationId: string, password: string): Promise<void>;
+    validatePasswordForUser(correlationId: string, userId: string, password: string): Promise<void>;
     setPassword(correlationId: string, userId: string, password: string): Promise<void>;
     setTempPassword(correlationId: string, userId: string): Promise<string>;
     deletePassword(correlationId: string, userId: string): Promise<void>;
