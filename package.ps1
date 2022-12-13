@@ -8,20 +8,6 @@ $component = Get-Content -Path "$PSScriptRoot/component.json" | ConvertFrom-Json
 $rcImage = "$($component.registry)/$($component.name):$($component.version)-$($component.build)"
 $latestImage = "$($component.registry)/$($component.name):latest"
 
-# Copy private keys to access git repo
-if (-not (Test-Path -Path "$PSScriptRoot/docker/id_rsa")) {
-    if (-not [string]::IsNullOrEmpty($env:GIT_PRIVATE_KEY)) {
-        Write-Host "Creating docker/id_rsa from environment variable..."
-        Set-Content -Path "$PSScriptRoot/docker/id_rsa" -Value $env:GIT_PRIVATE_KEY
-    } elseif (Test-Path -Path "~/.ssh/id_rsa") {
-        Write-Host "Copying ~/.ssh/id_rsa to docker..."
-        Copy-Item -Path "~/.ssh/id_rsa" -Destination "docker"
-    } else {
-        Write-Host "Missing ~/.ssh/id_rsa file..."
-        Set-Content -Path "$PSScriptRoot/docker/id_rsa" -Value ""
-    }
-}
-
 # Build docker image
 docker build -f "$PSScriptRoot/docker/Dockerfile" -t $rcImage -t $latestImage .
 if ($LastExitCode -eq 0) {
@@ -61,7 +47,6 @@ try {
     # Test using curl
     Start-Sleep -Seconds 10
     Invoke-WebRequest -Uri "http://$dockerMachineIp`:$httpPort$httpRoute"
-    #Invoke-WebRequest -Uri "http://$dockerMachineIp`:$httpPort/v1/microfrontends/get_microfrontends"
 
     if ($LastExitCode -eq 0) {
         Write-Host "The run container was successfully built and tested."
