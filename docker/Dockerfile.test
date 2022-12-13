@@ -1,5 +1,14 @@
 FROM node:14-alpine
 
+# Install python
+RUN apk add --update \
+    python3 \
+    python3-dev \
+    py-pip \
+    build-base \
+  && pip install virtualenv \
+  && rm -rf /var/cache/apk/*
+  
 # Set working directory
 WORKDIR /app
 
