@@ -8,7 +8,7 @@ import { References } from 'pip-services3-commons-nodex';
 import { UserPasswordV1 } from '../../../src/data/version1/UserPasswordV1';
 import { PasswordsMemoryPersistence } from '../../../src/persistence/PasswordsMemoryPersistence';
 import { PasswordsController } from '../../../src/logic/PasswordsController';
-import { PasswordsHttpServiceV1 } from '../../../src/services/version1/PasswordsHttpServiceV1';
+import { PasswordsCommandableHttpServiceV1 } from '../../../src/services/version1/PasswordsCommandableHttpServiceV1';
 
 let httpConfig = ConfigParams.fromTuples(
     "connection.protocol", "http",
@@ -18,8 +18,8 @@ let httpConfig = ConfigParams.fromTuples(
 
 let USER_PWD = new UserPasswordV1('1', 'password123');
 
-suite('PasswordsHttpServiceV1', () => {
-    let service: PasswordsHttpServiceV1;
+suite('PasswordsCommandableHttpServiceV1', () => {
+    let service: PasswordsCommandableHttpServiceV1;
 
     let rest: any;
 
@@ -27,13 +27,13 @@ suite('PasswordsHttpServiceV1', () => {
         let persistence = new PasswordsMemoryPersistence();
         let controller = new PasswordsController();
 
-        service = new PasswordsHttpServiceV1();
+        service = new PasswordsCommandableHttpServiceV1();
         service.configure(httpConfig);
 
         let references: References = References.fromTuples(
             new Descriptor('service-passwords', 'persistence', 'memory', 'default', '1.0'), persistence,
             new Descriptor('service-passwords', 'controller', 'default', 'default', '1.0'), controller,
-            new Descriptor('service-passwords', 'service', 'http', 'default', '1.0'), service
+            new Descriptor('service-passwords', 'service', 'commandable-http', 'default', '1.0'), service
         );
         controller.setReferences(references);
         service.setReferences(references);
