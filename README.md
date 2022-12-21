@@ -80,7 +80,7 @@ Example of microservice configuration
       lock_enabled: false # set to TRUE to enable locking logic
       magic_code: null # Universal code
 
-- descriptor: "service-passwords:service:http:default:1.0"
+- descriptor: "service-passwords:service:commandable-http:default:1.0"
   connection:
     protocol: "http"
     host: "0.0.0.0"
